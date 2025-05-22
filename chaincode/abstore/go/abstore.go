@@ -1,5 +1,4 @@
-// 1. abstore.go (대출 기능만 남긴 최종 버전)
-
+// 📁 chaincode/abstore/abstore.go
 package main
 
 import (
@@ -14,10 +13,11 @@ import (
 type LoanRequest struct {
 	ID           string `json:"id"`
 	Requester    string `json:"requester"`
+	Receiver     string `json:"receiver"`
 	Amount       int    `json:"amount"`
 	DurationDays int    `json:"durationDays"`
+	InterestRate int    `json:"interestRate"`
 	Status       string `json:"status"`
-	Provider     string `json:"provider"`
 	StartTime    int64  `json:"startTime"`
 }
 
@@ -27,7 +27,7 @@ type LoanContract struct {
 }
 
 // 대출 요청 생성
-func (t *LoanContract) CreateLoanRequest(ctx contractapi.TransactionContextInterface, id, requester string, amount, durationDays int) error {
+func (t *LoanContract) CreateLoanRequest(ctx contractapi.TransactionContextInterface, id, requester, receiver string, amount, durationDays, interestRate int) error {
 	exists, err := t.LoanRequestExists(ctx, id)
 	if err != nil {
 		return err
@@ -37,13 +37,14 @@ func (t *LoanContract) CreateLoanRequest(ctx contractapi.TransactionContextInter
 	}
 
 	loan := LoanRequest{
-		ID: id,
-		Requester: requester,
-		Amount: amount,
+		ID:           id,
+		Requester:    requester,
+		Receiver:     receiver,
+		Amount:       amount,
 		DurationDays: durationDays,
-		Status: "Pending",
-		Provider: "",
-		StartTime: 0,
+		InterestRate: interestRate,
+		Status:       "pending",
+		StartTime:    0,
 	}
 
 	loanJSON, err := json.Marshal(loan)
@@ -54,8 +55,8 @@ func (t *LoanContract) CreateLoanRequest(ctx contractapi.TransactionContextInter
 	return ctx.GetStub().PutState(id, loanJSON)
 }
 
-// 대출 요청 승인
-func (t *LoanContract) ApproveLoanRequest(ctx contractapi.TransactionContextInterface, id, provider string) error {
+// 대출 상태 변경
+func (t *LoanContract) UpdateLoanStatus(ctx contractapi.TransactionContextInterface, id, newStatus string) error {
 	loanJSON, err := ctx.GetStub().GetState(id)
 	if err != nil || loanJSON == nil {
 		return fmt.Errorf("loan request %s does not exist", id)
@@ -67,53 +68,10 @@ func (t *LoanContract) ApproveLoanRequest(ctx contractapi.TransactionContextInte
 		return err
 	}
 
-	if loan.Status != "Pending" {
-		return fmt.Errorf("loan request %s is not pending", id)
+	loan.Status = newStatus
+	if newStatus == "active" {
+		loan.StartTime = time.Now().Unix()
 	}
-
-	loan.Status = "Active"
-	loan.Provider = provider
-	loan.StartTime = time.Now().Unix()
-
-	updatedLoanJSON, err := json.Marshal(loan)
-	if err != nil {
-		return err
-	}
-
-	return ctx.GetStub().PutState(id, updatedLoanJSON)
-}
-
-// 대출 요청 삭제
-func (t *LoanContract) DeleteLoanRequest(ctx contractapi.TransactionContextInterface, id string) error {
-	exists, err := t.LoanRequestExists(ctx, id)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return fmt.Errorf("loan request %s does not exist", id)
-	}
-	return ctx.GetStub().DelState(id)
-}
-
-// 대출 요청 수정
-func (t *LoanContract) UpdateLoanRequest(ctx contractapi.TransactionContextInterface, id string, newAmount, newDurationDays int) error {
-	loanJSON, err := ctx.GetStub().GetState(id)
-	if err != nil || loanJSON == nil {
-		return fmt.Errorf("loan request %s does not exist", id)
-	}
-
-	var loan LoanRequest
-	err = json.Unmarshal(loanJSON, &loan)
-	if err != nil {
-		return err
-	}
-
-	if loan.Status != "Pending" {
-		return fmt.Errorf("cannot update loan request %s because it is not pending", id)
-	}
-
-	loan.Amount = newAmount
-	loan.DurationDays = newDurationDays
 
 	updatedLoanJSON, err := json.Marshal(loan)
 	if err != nil {

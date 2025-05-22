@@ -40,6 +40,7 @@ async function send(type, func, args, res, result){
             
 
         } catch (error) {
+            console.error("❌ Fabric 네트워크 연결 오류:", error);
             res.status(500).send({ error: `${error}`});
         } finally {
             gateway.disconnect();
